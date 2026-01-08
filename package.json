@@ -8,10 +8,10 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/EltenMelis/node-red-contrib-s7.git"
+        "url": "https://github.com/EltenLogisticSystems/node-red-contrib-s7.git"
     },
     "bugs": {
-        "url": "https://github.com/EltenMelis/node-red-contrib-s7/issues"
+        "url": "https://github.com/EltenLogisticSystems/node-red-contrib-s7/issues"
     },
     "scripts": {
         "publish": "npm publish"
