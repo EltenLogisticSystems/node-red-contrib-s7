@@ -1,5 +1,5 @@
 {
-    "name": "@EltenMelis/node-red-contrib-s7",
+    "name": "@EltenLogisticSystems/node-red-contrib-s7",
     "version": "0.0.1",
     "description": "A Node-RED node to interact with Siemens S7 PLCs",
     "main": "index.js",
