@@ -3,109 +3,56 @@ A Node-RED node to interact with Siemens S7 PLCs.
 
 This node was created as part of the [ST-One](https://st-one.io) project.
 
-## 更新日志
+## Update logbook
 
-### v3.4.0
+### v0.0.1
 
-- `s7-out` 节点增加 `已重写次数` 的输出
+- `s7-in`  “Show Address” Functionality
 
-- `s7-out` 节点修复 `数据残留导致重写失败` 的问题
+## Description
+The **S7 In** node reads data from a Siemens S7 PLC and can optionally include the actual addressing of the variables.  
+This is useful for debugging, logging, or when the exact byte/bit location is required.
 
-### v3.3.1
+## Key Options
 
-- `s7-out` 节点重构 `失败重写` 的逻辑
+### Mode
+- `single` – select a single variable.  
+- `all-split` – send each variable as a separate message.  
+- `all` – send all variables in a single object.  
 
-```bash
-改前：写入数据->读取最新值->判断是否成功->等待间隔时间->重试写入数据
-改后：写入数据->等待间隔时间->读取最新值->判断是否成功->重试写入数据
+### Show Address (checkbox in editor)
+- **On (true):** sends each value along with its actual Siemens address according to Siemens conventions:
+  - Booleans → `DBx.DBXy.z`  
+  - INT → `DBx.DBWy` (2 bytes)  
+  - DINT → `DBx.DBDy` (4 bytes)  
+- **Off (false):** sends only the value without the address.
+
+## Payload Output
+- **Single value:** an object or array (depending on the data type) containing `addr` and `value`.  
+- **Multi-value:** an array of objects, each with `addr` and `value`.  
+- **Single item (1 bit / 1 INT):** not an array, just a single object with `addr` and `value`.  
+
+### Examples
+
+```json
+// Single Boolean
+{ "addr": "DB5.DBX0.0", "value": 1 }
+
+// Single INT
+{ "addr": "DB5.DBW2", "value": 123 }
+
+// Multiple Booleans
+[
+  { "addr": "DB5.DBX0.0", "value": 1 },
+  { "addr": "DB5.DBX0.1", "value": 0 }
+]
+
+// Multiple INTs
+[
+  { "addr": "DB5.DBW2", "value": 123 },
+  { "addr": "DB5.DBW4", "value": 456 }
+]
 ```
-
-- `s7-out` 节点重构 `async-await` 的语法
-
-### v3.3.0
-
-- `s7-endpoint` 节点增加 `失败重写` 的配置
-
-  ```bash
-  注意！
-  应与PLC开发人员约定：如果要重置数据，则数据必须至少保留3秒再重置，避免写入数据后立即重置而导致程序认为写入数据失败
-  ```
-
-  ```bash
-  失败重写次数：该参数大于0时，当写入数据失败后，会自动重试写入数据，直至达到该次数限制
-
-  失败重写间隔：重试写入数据的时间间隔
-  ```
-
-- `s7-in` 节点重构 `msg` 的输出
-
-  ```json
-  {
-    // s7 节点参数
-    "_s7": {
-      "plc": "7#-8#",                       // plc 名称
-      "ip": "172.19.21.70",                 // plc ip
-      "status": "在线",                     // plc 状态 [在线/离线]
-      "time": "2024-07-26T02:15:38.128Z"    // msg 消息时间
-    },
-
-    // msg 消息内容
-    "payload": { "a":1, "b":2 }
-  }
-  ```
-
-- `s7-out` 节点重构 `msg` 的输出
-
-  ```json
-  {
-    // s7 节点参数
-    "_s7": {
-      "plc": "7#-8#",                       // plc 名称
-      "ip": "172.19.21.70",                 // plc ip
-      "status": "在线",                     // plc 状态 [在线/离线]
-      "time": "2024-07-26T02:15:38.128Z"    // msg 消息时间
-    },
-
-    // msg 消息内容
-    "payload": {
-      "variable": ["a", "b"],               // 写入的键 msg.variable
-      "payload": [1, 2],                    // 写入的值 msg.payload
-      "values": { "a":1, "b":2 },           // 写入的键值对
-      "newValues": {},                      // plc的最新键值对
-      "wrongValues": {},                    // 跟写入值不一致的键值对
-      "bingo": false,                       // 是否写入成功 [plc的最新值跟写入值是否一致]
-      "error": "Error: Not connected"       // 错误
-    }
-  }
-  ```
-
-- `s7` 所有节点增加 `简体中文` 的翻译
-
-### v3.2.0
-
-- `s7-in` 节点增加 `设备状态` 的输出
-
-  ```json
-  {
-        "name": "7#-8#",       // plc 名称
-        "ip": "172.19.21.70",  // plc ip
-        "status": "online"     // plc 状态 online / offline
-  }
-  ```
-
-- `s7-out` 节点增加 `写入结果` 的输出
-
-  ```json
-  {
-        "error": "Error: Not connected", // 错误
-        "variable": ["a", "b"],          // 写入的键 msg.variable
-        "payload": [1, 2],               // 写入的值 msg.payload
-        "values": { "a":1, "b":2 },      // 写入的键值对
-        "newValues": {},                 // plc的最新键值对
-        "bingo": false,                  // plc的最新值跟写入值是否一致
-        "wrongValues": {}                // 跟写入值不一致的键值对
-  }
-  ```
 
 ## Install
 
