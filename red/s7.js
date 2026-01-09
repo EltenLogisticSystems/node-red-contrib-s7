@@ -365,113 +365,167 @@ module.exports = function (RED) {
     }
     RED.nodes.registerType("s7 endpoint", S7Endpoint);
 
-    // ---------- S7 In ----------
+ 
+ 
+ 
 
-    function S7In(config) {
-        var node = this;
-        var statusVal;
-        RED.nodes.createNode(this, config);
 
-        node.endpoint = RED.nodes.getNode(config.endpoint);
-        if (!node.endpoint) {
-            return node.error(RED._("s7.error.missingconfig"));
-        }
+	// ---------- S7 In ----------
 
-        function sendMsg(data, key, status) {
-            if (key === undefined) key = '';
-            if (data instanceof Date) data = data.getTime();
-            var msg = {
-                topic: key,
-                payload: data,
-                _s7: {
-                    plc: node.endpoint.name,
-                    ip: node.endpoint.endpoint._connOptsTcp.host,
-                    status: node.endpoint.getStatus() === 'online' ? '在线' : '离线',
-                    time: new Date(),
-                }
-            };
-            statusVal = status !== undefined ? status : data;
-            node.send(msg);
-            node.status(generateStatus(node.endpoint.getStatus(), statusVal));
-        }
+	function S7In(config) {
+		var node = this;
+		var statusVal;
+		RED.nodes.createNode(this, config);
 
-        function onChanged(variable) {
-            sendMsg(variable.value, variable.key, null);
-        }
+		node.endpoint = RED.nodes.getNode(config.endpoint);
+		if (!node.endpoint) {
+			return node.error(RED._("s7.error.missingconfig"));
+		}
 
-        function onDataSplit(data) {
-            Object.keys(data).forEach(function (key) {
-                sendMsg(data[key], key, null);
-            });
-        }
+		// ✅ Show/Hide Address
+		node.showAddress = config.returnaddress; // true = Show, false = Hide
 
-        function onData(data) {
-            sendMsg(data, config.mode == 'single' ? config.variable : '');
-        }
+		// ---------- parse Siemens Address ----------
+		function parseSiemensAddress(addr, data) {
+			if (typeof addr !== 'string') return data;
 
-        function onDataSelect(data) {
-            onData(data[config.variable]);
-        }
+			const match = addr.match(/^(DB\d+),([A-Z])(\d+)(?:\.(\d+)(?:\.(\d+))?)?$/);
+			if (!match) return data;
 
-        function onEndpointStatus(s) {
-            node.status(generateStatus(s.status, statusVal));
+			const [, db, type, startByteStr, startBitStr, endBitStr] = match;
+			const startByte = Number(startByteStr);
+			let payload = [];
 
-            // 只触发 ['online', 'offline'] 的事件
-            // if (!['online', 'offline'].includes(node.endpoint.getStatus())) return;
-            var msg = {
-                topic: '',
-                payload: {},
-                _s7: {
-                    plc: node.endpoint.name,
-                    ip: node.endpoint.endpoint._connOptsTcp.host,
-                    status: node.endpoint.getStatus() === 'online' ? '在线' : '离线',
-                    time: new Date(),
-                }
-            };
-            node.send(msg);
-        }
+			switch (type) {
+				case 'X': // BOOL
+					if (!Array.isArray(data)) {
+						return { addr: `${db}.DBX${startByte}.${startBitStr}`, value: data };
+					}
+					const sBit = Number(startBitStr);
+					const eBit = Number(endBitStr);
+					data.forEach((val, idx) => {
+						const totalBit = sBit + idx;
+						const byte = startByte + Math.floor(totalBit / 8);
+						const bit = totalBit % 8;
+						if (totalBit <= eBit) {
+							payload.push({ addr: `${db}.DBX${byte}.${bit}`, value: val });
+						}
+					});
+					break;
 
-        node.status(generateStatus(node.endpoint.getStatus(), statusVal));
-        node.endpoint.on('__STATUS__', onEndpointStatus);
+				case 'I': // INT
+					if (!Array.isArray(data)) data = [data];
+					data.forEach((val, idx) => {
+						const byte = startByte + idx * 2;
+						payload.push({ addr: `${db}.DBW${byte}`, value: val });
+					});
+					break;
 
-        if (config.diff) {
-            switch (config.mode) {
-                case 'all-split':
-                    node.endpoint.on('__CHANGED__', onChanged);
-                    break;
-                case 'single':
-                    node.endpoint.on(config.variable, onData);
-                    break;
-                case 'all':
-                default:
-                    node.endpoint.on('__ALL_CHANGED__', onData);
-            }
-        } else {
-            switch (config.mode) {
-                case 'all-split':
-                    node.endpoint.on('__ALL__', onDataSplit);
-                    break;
-                case 'single':
-                    node.endpoint.on('__ALL__', onDataSelect);
-                    break;
-                case 'all':
-                default:
-                    node.endpoint.on('__ALL__', onData);
-            }
-        }
+				case 'D': // DINT
+				case 'R': // REAL
+					if (!Array.isArray(data)) data = [data];
+					data.forEach((val, idx) => {
+						const byte = startByte + idx * 4;
+						payload.push({ addr: `${db}.DBD${byte}`, value: val });
+					});
+					break;
 
-        node.on('close', function (done) {
-            node.endpoint.removeListener('__ALL__', onDataSelect);
-            node.endpoint.removeListener('__ALL__', onDataSplit);
-            node.endpoint.removeListener('__ALL__', onData);
-            node.endpoint.removeListener('__ALL_CHANGED__', onData);
-            node.endpoint.removeListener('__CHANGED__', onChanged);
-            node.endpoint.removeListener('__STATUS__', onEndpointStatus);
-            node.endpoint.removeListener(config.variable, onData);
-            done();
-        });
-    }
-    RED.nodes.registerType("s7 in", S7In);
+				default:
+					return { addr, value: data };
+			}
+
+			return payload.length === 1 ? payload[0] : payload;
+		}
+
+		// ---------- sendMsg functie ----------
+		let sendMsgFn = function(data, key, status) {
+			if (key === undefined) key = '';
+			if (data instanceof Date) data = data.getTime();
+
+			let payload = node.showAddress ? parseSiemensAddress(node.endpoint._vars[key], data) : data;
+
+			const msg = {
+				topic: key,
+				payload: payload,
+				_s7: {
+					plc: node.endpoint.name,
+					ip: node.endpoint.endpoint._connOptsTcp.host,
+					status: node.endpoint.getStatus() === 'online' ? 'online' : 'offline',
+					time: new Date(),
+				}
+			};
+
+			statusVal = status !== undefined ? status : data;
+			node.send(msg);
+			node.status(generateStatus(node.endpoint.getStatus(), statusVal));
+		};
+
+		// ---------- Event handlers ----------
+		function onChanged(variable) { sendMsgFn(variable.value, variable.key, null); }
+		function onDataSplit(data) { Object.keys(data).forEach(k => sendMsgFn(data[k], k, null)); }
+		function onData(data) { sendMsgFn(data, config.mode === 'single' ? config.variable : ''); }
+		function onDataSelect(data) { onData(data[config.variable]); }
+		function onEndpointStatus(s) {
+			node.status(generateStatus(s.status, statusVal));
+			const msg = {
+				topic: '',
+				payload: {},
+				_s7: {
+					plc: node.endpoint.name,
+					ip: node.endpoint.endpoint._connOptsTcp.host,
+					status: node.endpoint.getStatus() === 'online' ? 'online' : 'offline',
+					time: new Date(),
+				}
+			};
+			node.send(msg);
+		}
+
+		node.status(generateStatus(node.endpoint.getStatus(), statusVal));
+		node.endpoint.on('__STATUS__', onEndpointStatus);
+
+		if (config.diff) {
+			switch (config.mode) {
+				case 'all-split': node.endpoint.on('__CHANGED__', onChanged); break;
+				case 'single': node.endpoint.on(config.variable, onData); break;
+				case 'all':
+				default: node.endpoint.on('__ALL_CHANGED__', onData);
+			}
+		} else {
+			switch (config.mode) {
+				case 'all-split': node.endpoint.on('__ALL__', onDataSplit); break;
+				case 'single': node.endpoint.on('__ALL__', onDataSelect); break;
+				case 'all':
+				default: node.endpoint.on('__ALL__', onData);
+			}
+		}
+
+		node.on('close', function(done) {
+			node.endpoint.removeListener('__ALL__', onDataSelect);
+			node.endpoint.removeListener('__ALL__', onDataSplit);
+			node.endpoint.removeListener('__ALL__', onData);
+			node.endpoint.removeListener('__ALL_CHANGED__', onData);
+			node.endpoint.removeListener('__CHANGED__', onChanged);
+			node.endpoint.removeListener('__STATUS__', onEndpointStatus);
+			node.endpoint.removeListener(config.variable, onData);
+			done();
+		});
+	}
+
+	RED.nodes.registerType("s7 in", S7In);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // ---------- S7 Out ----------
 
@@ -518,7 +572,7 @@ module.exports = function (RED) {
                     msg._s7 = {
                         plc: node.endpoint.name,
                         ip: node.endpoint.endpoint._connOptsTcp.host,
-                        status: node.endpoint.getStatus() === 'online' ? '在线' : '离线',
+                        status: node.endpoint.getStatus() === 'online' ? 'online' : 'offline',
                         time: new Date(),
                     }
                     msg.payload = {
