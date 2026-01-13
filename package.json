@@ -1,0 +1,36 @@
+{
+    "name": "@eltenlogisticsystems/node-red-contrib-s7",
+    "version": "0.0.9",
+    "description": "A Node-RED node to interact with Siemens S7 PLCs",
+    "main": "index.js",
+    "dependencies": {
+        "@eltenlogisticsystems/node-red-contrib-s7": "^0.0.8",
+        "@st-one-io/nodes7": "1.1.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/EltenLogisticSystems/node-red-contrib-s7.git"
+    },
+    "bugs": {
+        "url": "https://github.com/EltenLogisticSystems/node-red-contrib-s7/issues"
+    },
+    "publishConfig": {
+        "registry": "https://registry.npmjs.org"
+    },
+    "keywords": [
+        "hardware",
+        "s7",
+        "logo",
+        "siemens",
+        "plc",
+        "profinet",
+        "node-red"
+    ],
+    "node-red": {
+        "nodes": {
+            "s7": "red/s7.js"
+        }
+    },
+    "author": "ST-One Ltda.",
+    "license": "GPL-3.0-or-later"
+}
